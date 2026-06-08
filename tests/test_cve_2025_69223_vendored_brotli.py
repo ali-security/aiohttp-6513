@@ -157,22 +157,12 @@ def test_no_system_brotli_disables_br_subprocess() -> None:
 
         from aiohttp.http_parser import DeflateBuffer
         from aiohttp.http_exceptions import ContentEncodingError
-        import asyncio
-        from aiohttp.streams import StreamReader
-        from aiohttp.base_protocol import BaseProtocol
-        async def _check():
-            loop = asyncio.get_event_loop()
-            sr = StreamReader(BaseProtocol(loop), 2**16, loop=loop)
-            try:
-                DeflateBuffer(sr, "br")
-            except ContentEncodingError:
-                return True
-            return False
-        loop = asyncio.new_event_loop()
         try:
-            assert loop.run_until_complete(_check()) is True
-        finally:
-            loop.close()
+            DeflateBuffer(None, "br")
+        except ContentEncodingError:
+            pass
+        else:
+            raise AssertionError("DeflateBuffer('br') must raise without brotli")
         print("OK br disabled, vendored still ships")
         """)
     assert result.returncode == 0, result.stderr
