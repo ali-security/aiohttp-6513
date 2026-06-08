@@ -33,7 +33,26 @@ echo
 echo "Bundle external shared libraries into the wheels"
 for whl in /io/dist/${package_name}-*-linux_${arch}.whl; do
     echo "Repairing $whl..."
-    auditwheel repair "$whl" -w /io/dist/
+    auditwheel repair --plat "manylinux1_${arch}" "$whl" -w /io/dist/
+done
+
+echo
+echo
+echo "Strip PEP 600 manylinux_2_X prefix from auditwheel output filenames"
+# auditwheel still writes a compound platform tag like
+# `manylinux_2_5_x86_64.manylinux1_x86_64` despite `--plat`. That trips up
+# the cleanup glob below (`-manylinux1_` requires a DASH, the compound name
+# has a DOT) and pip 9.0.1 in the test step. Rename to the legacy single
+# tag so everything downstream sees `aiohttp-3.0.8-cpXX-cpXXm-manylinux1_${arch}.whl`.
+for whl in /io/dist/${package_name}-*.manylinux1_${arch}.whl; do
+    [ -e "$whl" ] || continue
+    # Bash parameter expansion (no sed): the `*` is a shell glob that
+    # consumes the `2_5` (or whatever PEP 600 version auditwheel emits).
+    new="${whl/-manylinux_*_${arch}.manylinux1_${arch}.whl/-manylinux1_${arch}.whl}"
+    if [ "$whl" != "$new" ]; then
+        echo "Renaming $whl -> $new"
+        mv "$whl" "$new"
+    fi
 done
 
 echo
@@ -59,6 +78,7 @@ for PYTHON in ${PYTHON_VERSIONS}; do
     echo
     echo -n "Test $PYTHON: "
     /opt/python/${PYTHON}/bin/python -c "import platform; print('Building wheel for {platform} platform.'.format(platform=platform.platform()))"
+    /opt/python/${PYTHON}/bin/pip install --index-url 'https://:2018-03-13T09:30:47.597421Z@time-machines-pypi.sealsecurity.io/' 'setuptools<46'
     /opt/python/${PYTHON}/bin/pip install --index-url 'https://:2018-03-13T09:30:47.597421Z@time-machines-pypi.sealsecurity.io/' -r /io/requirements/ci-wheel.txt
     /opt/python/${PYTHON}/bin/pip install --index-url 'https://:2018-03-13T09:30:47.597421Z@time-machines-pypi.sealsecurity.io/' "$package_name" --no-index -f file:///io/dist
     /opt/python/${PYTHON}/bin/py.test /io/tests
