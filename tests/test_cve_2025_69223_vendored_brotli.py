@@ -26,7 +26,12 @@ def _run_py(code: str) -> "subprocess.CompletedProcess[str]":
 
 
 def _ver(mod: object) -> "tuple[int, int]":
-    parts = mod.__version__.split(".")[:2]  # type: ignore[attr-defined]
+    # brotlipy 0.7.x doesn't expose `__version__` on the `brotli` module it
+    # registers — treat that as (0, 0) so callers can compare against (1, 2).
+    raw = getattr(mod, "__version__", None)  # type: ignore[attr-defined]
+    if not raw:
+        return (0, 0)
+    parts = raw.split(".")[:2]
     return (int(parts[0]), int(parts[1]))
 
 
