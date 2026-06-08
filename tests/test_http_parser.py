@@ -791,3 +791,32 @@ class TestDeflateBuffer(unittest.TestCase):
         dbuf.feed_eof()
 
         self.assertTrue(buf.at_eof())
+
+    def test_decompress_size_limit(self):
+        buf = aiohttp.FlowControlDataQueue(self.stream)
+        dbuf = DeflateBuffer(buf, 'deflate', max_decompress_size=1024)
+
+        original = b'A' * (2 ** 20)
+        compressed = zlib.compress(original)
+
+        self.assertRaises(
+            http_exceptions.ContentEncodingError,
+            dbuf.feed_data, compressed, len(compressed))
+
+    def test_streaming_decompress_large_payload(self):
+        for chunk_size in (1024, 2 ** 14, 2 ** 16):
+            original = b'A' * (3 * 2 ** 20)
+            compressed = zlib.compress(original)
+
+            buf = aiohttp.FlowControlDataQueue(self.stream)
+            dbuf = DeflateBuffer(buf, 'deflate')
+
+            for i in range(0, len(compressed), chunk_size):
+                chunk = compressed[i:i + chunk_size]
+                dbuf.feed_data(chunk, len(chunk))
+
+            dbuf.feed_eof()
+
+            result = b''.join(d for d, _ in buf._buffer)
+            self.assertEqual(len(result), len(original))
+            self.assertEqual(result, original)
