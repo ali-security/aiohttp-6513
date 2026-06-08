@@ -93,7 +93,10 @@ def test_old_system_brotli_uses_vendored_decompressor() -> None:
         compressed, max_length=DEFAULT_MAX_DECOMPRESS_SIZE + 1
     )
     assert len(out) > DEFAULT_MAX_DECOMPRESS_SIZE
-    with pytest.raises(TypeError):
+    # Old system brotli either has no `.process` (brotlipy uses `.decompress`)
+    # or has `.process(data)` without a max_length arg — either way, calling
+    # it with a cap argument fails, which is what motivates the vendored fallback.
+    with pytest.raises((TypeError, AttributeError)):
         _system_brotli.Decompressor().process(compressed, DEFAULT_MAX_DECOMPRESS_SIZE)
 
 
