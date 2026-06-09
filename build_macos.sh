@@ -19,7 +19,6 @@ VDIR="$(dirname "$HERE")"                               # 3.0.8+sp1/
 OUT="${OUT:-$VDIR/build_output}"; mkdir -p "$OUT"
 TAG=v3.0.8
 CYTHON=0.27.3            # matches the public 3.0.8 wheels' Generator/Cython
-SYS=/usr/bin/python3     # system python, only for retagging (modern `wheel`)
 
 # Patched source: use $SOURCE if it already has the CVE patch applied (e.g. the
 # checked-out fork); otherwise clone clean upstream and apply our patch.
@@ -38,7 +37,10 @@ if ! command -v conda >/dev/null 2>&1; then
   export PATH="$HOME/miniforge3/bin:$PATH"
 fi
 source "$(conda info --base)/etc/profile.d/conda.sh"
-"$SYS" -m pip install -q --user wheel    # modern wheel, for retagging only
+# retag with the conda base python (modern) + a current `wheel` (has `tags`);
+# the build envs pin wheel 0.30.0 which can't retag.
+RETAG_PY="$(conda info --base)/bin/python"
+"$RETAG_PY" -m pip install -q -U wheel
 
 # build <conda-env> <deployment-target>  -> one retagged wheel into $OUT
 build() {
@@ -50,7 +52,7 @@ build() {
   rm -rf /tmp/wh; ( cd "$SRC" && rm -rf build && python setup.py bdist_wheel -d /tmp/wh )
   conda deactivate
   local T="${TARGET//./_}"
-  "$SYS" -m wheel tags --platform-tag "macosx_${T}_x86_64" --remove /tmp/wh/*.whl
+  "$RETAG_PY" -m wheel tags --platform-tag "macosx_${T}_x86_64" --remove /tmp/wh/*.whl
   mv /tmp/wh/*.whl "$OUT/"
 }
 
