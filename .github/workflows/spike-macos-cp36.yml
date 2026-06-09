@@ -31,7 +31,7 @@ jobs:
           CIBW_ARCHS_MACOS: "x86_64"
           # setup.py-only source: build with pip + era-exact toolchain (no isolation).
           CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
-          CIBW_BEFORE_BUILD: "pip install 'cython==0.27.3' 'wheel==0.30.0' 'setuptools<46'"
+          CIBW_BEFORE_BUILD: "pip install 'cython==0.27.3'"
           # Clang 16+ (Xcode 16 on macos-15) makes implicit decls hard errors; old
           # Cython-generated C trips this. Demote back to warnings so the build proceeds.
           CIBW_ENVIRONMENT: 'CFLAGS="-Wno-error=implicit-function-declaration -Wno-error=implicit-int"'
