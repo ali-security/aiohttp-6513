@@ -1,7 +1,9 @@
 name: spike-macos-cp36
-# THROWAWAY spike: build a single patched cp36 macOS wheel for aiohttp 3.0.8 on
-# the last x86_64 GitHub runner (macos-15-intel). Uploads the wheel as a run
-# artifact only — does not touch the sealed-libraries repo.
+# THROWAWAY recipe-confirmation: build cp36 macOS wheel for aiohttp 3.0.8 with the
+# PROPOSED REAL RECIPE — era-exact wheel 0.30.0 (matches public dist-info + Generator),
+# skip delocate (wheels are self-contained, nothing to bundle), deployment target 10.12
+# (match public tag + Mach-O min-version). Plus a dep-free runtime load of the vendored
+# brotli .so on cp36. Uploads the wheel as a run artifact only.
 on:
   push:
     branches: [spike/macos-cp36]
@@ -14,42 +16,53 @@ jobs:
       - name: Checkout (patched aiohttp 3.0.8 fork)
         uses: actions/checkout@v4
 
-      - name: Environment dump (so a failure still tells us the toolchain)
+      - name: Environment dump
         run: |
           set -x
-          sw_vers
-          xcodebuild -version || true
-          clang --version
-          xcrun --show-sdk-path
-          xcrun --show-sdk-version
-          uname -m
+          sw_vers; clang --version; uname -m
 
-      - name: Build cp36 macOS wheel
+      - name: Build cp36 macOS wheel (era recipe, no delocate)
         uses: pypa/cibuildwheel@v2.16.5
         env:
           CIBW_BUILD: "cp36-macosx_x86_64"
           CIBW_ARCHS_MACOS: "x86_64"
-          # setup.py-only source: build with pip + era-exact toolchain (no isolation).
           CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
-          CIBW_BEFORE_BUILD: "pip install 'cython==0.27.3'"
-          # Clang 16+ (Xcode 16 on macos-15) makes implicit decls hard errors; old
-          # Cython-generated C trips this. Demote back to warnings so the build proceeds.
-          CIBW_ENVIRONMENT: 'CFLAGS="-Wno-error=implicit-function-declaration -Wno-error=implicit-int"'
+          # era-exact toolchain so dist-info + Generator match the public 3.0.8 wheel
+          CIBW_BEFORE_BUILD: "pip install 'cython==0.27.3' 'wheel==0.30.0' 'setuptools<46'"
+          # extensions are self-contained (no external dylibs) -> delocate has nothing to
+          # bundle and wheel 0.30.0 lacks wheel.wheelfile that delocate imports. Skip it.
+          CIBW_REPAIR_WHEEL_COMMAND: ""
+          # match the public cp36 tag (10_12) and Mach-O min-version; keep clang-17 mitigation
+          CIBW_ENVIRONMENT: 'CFLAGS="-Wno-error=implicit-function-declaration -Wno-error=implicit-int" MACOSX_DEPLOYMENT_TARGET=10.12'
           CIBW_BUILD_VERBOSITY: "1"
 
-      - name: Inspect built wheel
+      - name: Inspect wheel (tag, dist-info layout, Generator)
         if: always()
         run: |
+          set -x
           ls -la wheelhouse/ || true
-          for w in wheelhouse/*.whl; do
-            echo "== $w =="
-            unzip -l "$w" | grep -iE "_vendored/_brotli|\.so|http_parser" || true
-          done
+          W=$(ls wheelhouse/*.whl | head -1)
+          echo "== dist-info contents (want: DESCRIPTION.rst + metadata.json present, LICENSE.txt absent) =="
+          unzip -l "$W" | grep -E "dist-info/" || true
+          echo "== WHEEL (Generator) =="
+          unzip -p "$W" "aiohttp-3.0.8.dist-info/WHEEL" || true
+          echo "== vendored brotli .so present? =="
+          unzip -l "$W" | grep -E "_vendored/_brotli.*\.so" || true
+
+      - name: Runtime sanity — load vendored brotli .so on cp36 (dep-free)
+        run: |
+          set -x
+          PY=/Library/Frameworks/Python.framework/Versions/3.6/bin/python3
+          "$PY" --version
+          W=$(ls "$GITHUB_WORKSPACE"/wheelhouse/*.whl | head -1)
+          rm -rf /tmp/wh && mkdir -p /tmp/wh && (cd /tmp/wh && unzip -o "$W" >/dev/null)
+          SO=$(ls /tmp/wh/aiohttp/_vendored/_brotli*.so)
+          "$PY" -c "import importlib.util as u; s=u.spec_from_file_location('_brotli', '$SO'); m=u.module_from_spec(s); s.loader.exec_module(m); print('vendored _brotli loaded OK on cp36:', m); print('api:', [a for a in dir(m) if not a.startswith('__')])"
 
       - name: Upload wheel
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: aiohttp-308-cp36-macos
+          name: aiohttp-308-cp36-macos-recipe2
           path: wheelhouse/*.whl
           if-no-files-found: warn
