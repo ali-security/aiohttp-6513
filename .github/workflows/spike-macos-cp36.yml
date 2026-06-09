@@ -1,0 +1,55 @@
+name: spike-macos-cp36
+# THROWAWAY spike: build a single patched cp36 macOS wheel for aiohttp 3.0.8 on
+# the last x86_64 GitHub runner (macos-15-intel). Uploads the wheel as a run
+# artifact only — does not touch the sealed-libraries repo.
+on:
+  push:
+    branches: [spike/macos-cp36]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    steps:
+      - name: Checkout (patched aiohttp 3.0.8 fork)
+        uses: actions/checkout@v4
+
+      - name: Environment dump (so a failure still tells us the toolchain)
+        run: |
+          set -x
+          sw_vers
+          xcodebuild -version || true
+          clang --version
+          xcrun --show-sdk-path
+          xcrun --show-sdk-version
+          uname -m
+
+      - name: Build cp36 macOS wheel
+        uses: pypa/cibuildwheel@v2.16.5
+        env:
+          CIBW_BUILD: "cp36-macosx_x86_64"
+          CIBW_ARCHS_MACOS: "x86_64"
+          # setup.py-only source: build with pip + era-exact toolchain (no isolation).
+          CIBW_BUILD_FRONTEND: "pip; args: --no-build-isolation"
+          CIBW_BEFORE_BUILD: "pip install 'cython==0.27.3' 'wheel==0.30.0' 'setuptools<46'"
+          # Clang 16+ (Xcode 16 on macos-15) makes implicit decls hard errors; old
+          # Cython-generated C trips this. Demote back to warnings so the build proceeds.
+          CIBW_ENVIRONMENT: 'CFLAGS="-Wno-error=implicit-function-declaration -Wno-error=implicit-int"'
+          CIBW_BUILD_VERBOSITY: "1"
+
+      - name: Inspect built wheel
+        if: always()
+        run: |
+          ls -la wheelhouse/ || true
+          for w in wheelhouse/*.whl; do
+            echo "== $w =="
+            unzip -l "$w" | grep -iE "_vendored/_brotli|\.so|http_parser" || true
+          done
+
+      - name: Upload wheel
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aiohttp-308-cp36-macos
+          path: wheelhouse/*.whl
+          if-no-files-found: warn
