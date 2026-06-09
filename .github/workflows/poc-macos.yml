@@ -1,0 +1,20 @@
+name: poc-macos
+on: { push: { branches: [poc/macos] }, workflow_dispatch: {} }
+jobs:
+  poc:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - name: PoC - vendored brotli bounded vs unbounded (cp36)
+        run: |
+          set -euxo pipefail
+          curl -fsSL -o mf.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-x86_64.sh
+          bash mf.sh -b -p "$HOME/mf"; source "$HOME/mf/etc/profile.d/conda.sh"
+          conda create -y -n p36 -c conda-forge python=3.6.15
+          conda activate p36
+          export CFLAGS="-Wno-error=implicit-function-declaration -Wno-error=implicit-int"
+          pip install 'cython==0.27.3' 'wheel==0.30.0' 'setuptools<46' brotli
+          pip wheel . --no-deps --no-build-isolation -w /tmp/wh
+          mkdir -p /tmp/x && (cd /tmp/x && unzip -oq /tmp/wh/aiohttp-*.whl)
+          SO=$(ls /tmp/x/aiohttp/_vendored/_brotli*.so)
+          python poc_macos.py "$SO"
