@@ -47,7 +47,10 @@ build() {
   local ENV="$1" TARGET="$2"
   conda activate "$ENV"
   export MACOSX_DEPLOYMENT_TARGET="$TARGET" ARCHFLAGS="-arch x86_64"
-  export CFLAGS="-Wno-error=implicit-function-declaration -Wno-error=implicit-int"
+  # conda's py3.5 distutils ignores MACOSX_DEPLOYMENT_TARGET (bakes 10.9); force the
+  # min-version flag so the linker stamps LC_VERSION_MIN = the tag we ship.
+  export CFLAGS="-Wno-error=implicit-function-declaration -Wno-error=implicit-int -mmacosx-version-min=$TARGET"
+  export LDFLAGS="-mmacosx-version-min=$TARGET"
   python -m pip install -q "cython==$CYTHON" 'wheel==0.30.0' 'setuptools<46'
   rm -rf /tmp/wh; ( cd "$SRC" && rm -rf build && python setup.py bdist_wheel -d /tmp/wh )
   conda deactivate
