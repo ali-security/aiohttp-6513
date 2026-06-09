@@ -1,0 +1,23 @@
+name: run-build-macos
+# Execution wrapper: runs the committed build_macos.sh on the fork's already-patched
+# tree (SOURCE=$PWD skips clone+patch). Throwaway.
+on:
+  push:
+    branches: [build/macos-real]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build macOS wheels via build_macos.sh
+        run: SOURCE="$PWD" OUT="$PWD/build_output" bash build_macos.sh
+      - name: List
+        if: always()
+        run: ls -la build_output/ || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: aiohttp-3.0.8-macos
+          path: build_output/*macosx*.whl
+          if-no-files-found: warn
